@@ -3,7 +3,7 @@
 ![publish](https://github.com/tvwenger/bayes_pol/actions/workflows/publish.yml/badge.svg)
 ![tests](https://github.com/tvwenger/bayes_pol/actions/workflows/tests.yml/badge.svg)
 [![Documentation Status](https://readthedocs.org/projects/bayes-pol/badge/?version=latest)](https://bayes-pol.readthedocs.io/en/latest/?badge=latest)
-[![codecov](https://codecov.io/gh/tvwenger/bayes_pol/graph/badge.svg?token=)](https://codecov.io/gh/tvwenger/bayes_pol)
+[![codecov](https://codecov.io/gh/tvwenger/bayes_pol/graph/badge.svg?token=Q9zM8gvHhE)](https://codecov.io/gh/tvwenger/bayes_pol)
 
 Bayesian Spectral Polarization Models
 
