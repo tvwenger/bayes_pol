@@ -52,7 +52,7 @@ def get_config() -> VersioneerConfig:
     cfg.style = "pep440"
     cfg.tag_prefix = "v"
     cfg.parentdir_prefix = "None"
-    cfg.versionfile_source = "bayes_polarization/_version.py"
+    cfg.versionfile_source = "bayes_pol/_version.py"
     cfg.verbose = False
     return cfg
 
