@@ -13,7 +13,7 @@ setup(
     author_email="tvwenger@gmail.com",
     packages=find_packages(),
     install_requires=install_requires,
-    python_requires=">=3.11",
+    python_requires=">=3.11,<3.13",
     license="MIT",
     url="https://github.com/tvwenger/bayes_pol",
 )
