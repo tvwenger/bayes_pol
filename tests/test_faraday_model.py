@@ -2,7 +2,7 @@
 test_cn_model.py
 tests for CNModel
 
-Copyright(C) 2024 by
+Copyright(C) 2025 by
 Trey V. Wenger; tvwenger@gmail.com
 This code is licensed under MIT license (see LICENSE for details)
 """
