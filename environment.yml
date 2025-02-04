@@ -1,0 +1,36 @@
+name: bayes_pol-dev
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - ipython
+  - jupyter
+  - ipykernel
+  - ipywidgets
+  - versioneer
+  - black
+  - flake8
+  - pytest
+  - pytest-cov
+  - numpy
+  - pymc>=5.20
+  - pytensor
+  - nutpie
+  - numba
+  - arviz
+  - matplotlib
+  - scipy
+  - scikit-learn
+  - graphviz
+  - jaxlib
+  - jax
+  - blackjax
+  - numpyro
+  - astropy
+  - astroquery
+  - pip
+  - pip:
+    - "sphinx_rtd_theme"
+    - "nbsphinx"
+    - "numpydoc"
+    - "bayes_spec>=1.7.2"

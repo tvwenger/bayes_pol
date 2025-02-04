@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools", "versioneer[toml]==0.29"]
+build-backend = "setuptools.build_meta"
+
+[tool.versioneer]
+VCS = "git"
+style = "pep440"
+versionfile_source = "bayes_pol/_version.py"
+versionfile_build = "bayes_pol/_version.py"
+tag_prefix = "v"
+
+[project]
+name = "bayes_pol"
+description = "Bayesian Spectral Polarization Models"
+authors = [
+  { name="Trey Wenger", email="tvwenger@gmail.com" },
+]
+readme = "README.md"
+license = { file="LICENSE" }
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dynamic = ["version", "dependencies"]
+
+[project.urls]
+Homepage = "https://github.com/tvwenger/bayes_pol"
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.coverage.run]
+omit = [
+    "bayes_pol/_version.py",
+]

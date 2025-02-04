@@ -1,0 +1,88 @@
+digraph {
+	graph [newrank=false,
+		rankdir=TB,
+		splines=ortho
+	];
+	subgraph "clustercloud (3)" {
+		graph [label="cloud (3)",
+			labeljust=r,
+			labelloc=b,
+			style=rounded
+		];
+		faraday_depth_fwhm	[label="faraday_depth_fwhm
+~
+Deterministic",
+			shape=box];
+		faraday_depth_mean_norm	[label="faraday_depth_mean_norm
+~
+Cauchy",
+			shape=ellipse];
+		faraday_depth_fwhm_norm	[label="faraday_depth_fwhm_norm
+~
+HalfNormal",
+			shape=ellipse];
+		faraday_depth_mean	[label="faraday_depth_mean
+~
+Deterministic",
+			shape=box];
+		polarized_intensity	[label="polarized_intensity
+~
+Deterministic",
+			shape=box];
+		pol_angle0	[label="pol_angle0
+~
+Deterministic",
+			shape=box];
+		polarized_intensity_norm	[label="polarized_intensity_norm
+~
+HalfNormal",
+			shape=ellipse];
+		pol_angle0_norm	[label="pol_angle0_norm
+~
+Uniform",
+			shape=ellipse];
+	}
+	subgraph cluster433 {
+		graph [label=433,
+			labeljust=r,
+			labelloc=b,
+			style=rounded
+		];
+		faraday_depth_abs	[label="faraday_depth_abs
+~
+TruncatedNormal",
+			shape=ellipse,
+			style=filled];
+	}
+	subgraph cluster300 {
+		graph [label=300,
+			labeljust=r,
+			labelloc=b,
+			style=rounded
+		];
+		U	[label="U
+~
+Normal",
+			shape=ellipse,
+			style=filled];
+		Q	[label="Q
+~
+Normal",
+			shape=ellipse,
+			style=filled];
+	}
+	faraday_depth_fwhm -> U;
+	faraday_depth_fwhm -> Q;
+	faraday_depth_mean_norm -> faraday_depth_mean	[minlen=1];
+	faraday_depth_fwhm_norm -> faraday_depth_fwhm	[minlen=1];
+	faraday_depth_mean -> faraday_depth_abs;
+	faraday_depth_mean -> U;
+	faraday_depth_mean -> Q;
+	polarized_intensity -> faraday_depth_abs;
+	polarized_intensity -> U;
+	polarized_intensity -> Q;
+	pol_angle0 -> U;
+	pol_angle0 -> Q;
+	polarized_intensity_norm -> polarized_intensity	[minlen=1];
+	pol_angle0_norm -> pol_angle0	[minlen=1];
+}
