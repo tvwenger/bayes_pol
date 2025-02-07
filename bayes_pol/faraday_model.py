@@ -7,6 +7,8 @@ Trey V. Wenger; tvwenger@gmail.com
 This code is licensed under MIT license (see LICENSE for details)
 """
 
+from typing import Iterable
+
 import pymc as pm
 from pymc.distributions.transforms import CircularTransform
 import pytensor.tensor as pt
@@ -14,27 +16,13 @@ import numpy as np
 
 from bayes_spec import BaseModel
 
-
-def sinc(x: float) -> float:
-    """Evaluate sin(x)/x and catch x=0.
-
-    Parameters
-    ----------
-    x : float
-        Position at which to evaluate
-
-    Returns
-    -------
-    float
-        sin(x)/x
-    """
-    return pt.switch(pt.eq(x, 0.0), 1.0, pt.sin(x) / x)
+from bayes_pol.utils import get_faraday_depth_params, calc_faraday_depth_abs
 
 
 class FaradayModel(BaseModel):
     """Definition of the model"""
 
-    def __init__(self, *args, lam2_window_width=None, **kwargs):
+    def __init__(self, *args, **kwargs):
         """Initialize a new model instance"""
         # Initialize BaseModel
         super().__init__(*args, **kwargs)
@@ -56,16 +44,16 @@ class FaradayModel(BaseModel):
             }
         )
 
-        # save lam2 window width
-        self.lam2_window_width = lam2_window_width
-        if self.lam2_window_width is None:
-            raise ValueError("Must supply lam2_window_width")
+        # Save Faraday depth parameters
+        self.faraday_params = get_faraday_depth_params(self.data["Q"].spectral, self.data["faraday_depth_abs"].spectral)
 
     def add_priors(
         self,
         prior_polarized_intensity: float = 100.0,  # data brightness
-        prior_faraday_depth_mean: float = [0.0, 1000.0],  # rad m-2
+        prior_faraday_depth_mean: Iterable[float] = [0.0, 1000.0],  # rad m-2
         prior_faraday_depth_fwhm: float = 10.0,  # rad m-2
+        prior_faraday_depth_offset: Iterable[float] = [0.0, 1.0],  # data brightness
+        prior_faraday_depth_sigma: float = 1.0,  # data brightness
     ):
         """Add priors and deterministics to the model
 
@@ -80,6 +68,14 @@ class FaradayModel(BaseModel):
         prior_faraday_depth_fwhm : float, optional
             Prior distribution on the Faraday depth full-width at half-maximum (rad/m2), by default 10.0, where
             faraday_depth_fwhm ~ HalfNormal(sigma=prior)
+        prior_faraday_depth_offset : Iterable[float], optional
+            Prior distribution of Faraday depth spectral offset hyper parameter (data brightness),
+            by default [0.0, 0.1], where
+            faraday_depth_offset ~ Normal(mu=prior[0], sigma=prior[1])
+        prior_faraday_depth_sigma : float, optional
+            Prior distribution of Faraday depth spectral rms hyper parameter (data brightness),
+            by default 0.1, where
+            faraday_depth_sigma ~ prior * Gamma(alpha=1.0, beta=1.0)
         """
         with self.model:
             # Polarized intensity (data brightness units)
@@ -110,6 +106,17 @@ class FaradayModel(BaseModel):
             )
             _ = pm.Deterministic("pol_angle0", 0.5 * pol_angle0_norm, dims="cloud")
 
+            # Faraday depth spectral offset
+            faraday_depth_offset_norm = pm.Normal("faraday_depth_offset_norm", mu=0.0, sigma=1.0)
+            _ = pm.Deterministic(
+                "faraday_depth_offset",
+                prior_faraday_depth_offset[0] + prior_faraday_depth_offset[1] * faraday_depth_offset_norm,
+            )
+
+            # Faraday depth spectral rms
+            faraday_depth_sigma_norm = pm.Gamma("faraday_depth_sigma_norm", alpha=2.0, beta=1.0)
+            _ = pm.Deterministic("faraday_depth_sigma", prior_faraday_depth_sigma * faraday_depth_sigma_norm)
+
     def add_likelihood(self):
         """Add likelihood to the model. SpecData key must be "Q", "U", and "faraday_depth_abs".
         Spectral units for "Q" and "U" should be square wavelength in m2.
@@ -117,23 +124,6 @@ class FaradayModel(BaseModel):
         Order of clouds is nearest to farthest.
         """
         with self.model:
-            # Predict Faraday depth spectrum (shape: spectral)
-            faraday_depth_abs = pt.abs(
-                self.model["polarized_intensity"]
-                * sinc(
-                    (self.data["faraday_depth_abs"].spectral[:, None] - self.model["faraday_depth_mean"])
-                    * self.lam2_window_width
-                )
-            ).sum(axis=1)
-
-            _ = pm.TruncatedNormal(
-                "faraday_depth_abs",
-                mu=faraday_depth_abs,
-                lower=0.0,
-                sigma=self.data["faraday_depth_abs"].noise,
-                observed=self.data["faraday_depth_abs"].brightness,
-            )
-
             # Predict Stokes Q and U, sum over clouds (shape: spectral)
             stokesQ = (
                 self.model["polarized_intensity"]
@@ -168,3 +158,12 @@ class FaradayModel(BaseModel):
 
             _ = pm.Normal("Q", mu=stokesQ, sigma=self.data["Q"].noise, observed=self.data["Q"].brightness)
             _ = pm.Normal("U", mu=stokesU, sigma=self.data["U"].noise, observed=self.data["U"].brightness)
+
+            # Predict Faraday depth spectrum (shape: spectral)
+            faraday_depth_abs = calc_faraday_depth_abs(stokesQ, stokesU, *self.faraday_params)
+            _ = pm.Normal(
+                "faraday_depth_abs",
+                mu=faraday_depth_abs - self.model["faraday_depth_offset"],
+                sigma=self.model["faraday_depth_sigma"],
+                observed=self.data["faraday_depth_abs"].brightness,
+            )
