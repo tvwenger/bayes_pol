@@ -16,7 +16,7 @@ import numpy as np
 
 from bayes_spec import BaseModel
 
-from bayes_pol.utils import get_faraday_depth_params, calc_faraday_depth_abs
+from bayes_pol.utils import calc_rmsf
 
 
 class FaradayModel(BaseModel):
@@ -37,64 +37,64 @@ class FaradayModel(BaseModel):
         # Define TeX representation of each parameter
         self.var_name_map.update(
             {
-                "polarized_intensity": r"P (data brightness)",
+                "polarized_intensity": r"P (\%)",
                 "faraday_depth_mean": r"$\langle F \rangle$ (rad m$^{-2}$)",
                 "faraday_depth_fwhm": r"$\Delta F$ (rad m$^{-2}$)",
                 "pol_angle0": r"$\phi_0$ (rad)",
             }
         )
 
-        # Save Faraday depth parameters
-        self.faraday_params = get_faraday_depth_params(self.data["Q"].spectral, self.data["faraday_depth_abs"].spectral)
+        # Get upper and lower frequency and lambda^2 limits of windows
+        self.lam2_lower = np.array(
+            [dataset.spectral.min() for key, dataset in self.data.items() if "Q" in key]
+        )
+        self.lam2_upper = np.array(
+            [dataset.spectral.max() for key, dataset in self.data.items() if "Q" in key]
+        )
+        self.num_chans = np.array(
+            [len(dataset.spectral) for key, dataset in self.data.items() if "Q" in key]
+        )
 
     def add_priors(
         self,
-        prior_polarized_intensity: float = 100.0,  # data brightness
         prior_faraday_depth_mean: Iterable[float] = [0.0, 1000.0],  # rad m-2
         prior_faraday_depth_fwhm: float = 10.0,  # rad m-2
-        prior_faraday_depth_offset: Iterable[float] = [0.0, 1.0],  # data brightness
-        prior_faraday_depth_sigma: float = 1.0,  # data brightness
     ):
         """Add priors and deterministics to the model
 
         Parameters
         ----------
-        prior_polarized_intensity : float, optional
-            Prior distribution on the polarized intensity (data brightness), by default 100.0, where
-            polarized_intensity ~ HalfNormal(sigma=prior)
         prior_faraday_depth_mean : Iterable[float], optional
             Prior distribution on the mean Faraday depth (rad/m2), by default [0.0, 1000.0], where
             faraday_depth_mean ~ Cauchy(alpha=prior[0], beta=prior[1])
         prior_faraday_depth_fwhm : float, optional
             Prior distribution on the Faraday depth full-width at half-maximum (rad/m2), by default 10.0, where
             faraday_depth_fwhm ~ HalfNormal(sigma=prior)
-        prior_faraday_depth_offset : Iterable[float], optional
-            Prior distribution of Faraday depth spectral offset hyper parameter (data brightness),
-            by default [0.0, 0.1], where
-            faraday_depth_offset ~ Normal(mu=prior[0], sigma=prior[1])
-        prior_faraday_depth_sigma : float, optional
-            Prior distribution of Faraday depth spectral rms hyper parameter (data brightness),
-            by default 0.1, where
-            faraday_depth_sigma ~ prior * Gamma(alpha=1.0, beta=1.0)
         """
         with self.model:
             # Polarized intensity (data brightness units)
-            polarized_intensity_norm = pm.HalfNormal("polarized_intensity_norm", sigma=1.0, dims="cloud")
-            _ = pm.Deterministic(
-                "polarized_intensity", polarized_intensity_norm * prior_polarized_intensity, dims="cloud"
-            )
+            _ = pm.Beta("polarized_intensity", alpha=2.0, beta=2.0, dims="cloud")
 
             # Mean Faraday depth (rad m-2)
-            faraday_depth_mean_norm = pm.Cauchy("faraday_depth_mean_norm", alpha=0.0, beta=1.0, dims="cloud")
+            faraday_depth_mean_norm = pm.Cauchy(
+                "faraday_depth_mean_norm", alpha=0.0, beta=1.0, dims="cloud"
+            )
             _ = pm.Deterministic(
                 "faraday_depth_mean",
-                prior_faraday_depth_mean[0] + prior_faraday_depth_mean[1] * faraday_depth_mean_norm,
+                prior_faraday_depth_mean[0]
+                + prior_faraday_depth_mean[1] * faraday_depth_mean_norm,
                 dims="cloud",
             )
 
             # FWHM Faraday depth (rad m-2)
-            faraday_depth_fwhm_norm = pm.HalfNormal("faraday_depth_fwhm_norm", sigma=1.0, dims="cloud")
-            _ = pm.Deterministic("faraday_depth_fwhm", faraday_depth_fwhm_norm * prior_faraday_depth_fwhm, dims="cloud")
+            faraday_depth_fwhm_norm = pm.HalfNormal(
+                "faraday_depth_fwhm_norm", sigma=1.0, dims="cloud"
+            )
+            _ = pm.Deterministic(
+                "faraday_depth_fwhm",
+                faraday_depth_fwhm_norm * prior_faraday_depth_fwhm,
+                dims="cloud",
+            )
 
             # Polarization angle at lambda = 0 (rad; shape: clouds)
             pol_angle0_norm = pm.Uniform(
@@ -106,16 +106,14 @@ class FaradayModel(BaseModel):
             )
             _ = pm.Deterministic("pol_angle0", 0.5 * pol_angle0_norm, dims="cloud")
 
-            # Faraday depth spectral offset
-            faraday_depth_offset_norm = pm.Normal("faraday_depth_offset_norm", mu=0.0, sigma=1.0)
-            _ = pm.Deterministic(
-                "faraday_depth_offset",
-                prior_faraday_depth_offset[0] + prior_faraday_depth_offset[1] * faraday_depth_offset_norm,
+            # Faraday depth rms (data brightness)
+            faraday_depth_sigma_norm = pm.HalfNormal(
+                "faraday_depth_sigma_norm", sigma=1.0
             )
-
-            # Faraday depth spectral rms
-            faraday_depth_sigma_norm = pm.Gamma("faraday_depth_sigma_norm", alpha=2.0, beta=1.0)
-            _ = pm.Deterministic("faraday_depth_sigma", prior_faraday_depth_sigma * faraday_depth_sigma_norm)
+            _ = pm.Deterministic(
+                "faraday_depth_sigma",
+                faraday_depth_sigma_norm / np.sqrt(np.sum(self.num_chans)),
+            )
 
     def add_likelihood(self):
         """Add likelihood to the model. SpecData key must be "Q", "U", and "faraday_depth_abs".
@@ -124,46 +122,70 @@ class FaradayModel(BaseModel):
         Order of clouds is nearest to farthest.
         """
         with self.model:
-            # Predict Stokes Q and U, sum over clouds (shape: spectral)
-            stokesQ = (
-                self.model["polarized_intensity"]
-                * pt.exp(
-                    -self.model["faraday_depth_fwhm"] ** 2.0
-                    * self.data["Q"].spectral[:, None] ** 2.0
-                    / (4.0 * np.log(2.0))
-                )
-                * pt.cos(
-                    2.0
-                    * (
-                        pt.cumsum(self.model["pol_angle0"])
-                        + self.model["faraday_depth_mean"] * self.data["Q"].spectral[:, None]
+            # Predict Stokes Q and U, sum over clouds (shape: spectral, clouds)
+            for key in self.data.keys():
+                if "Q" in key:
+                    stokes = (
+                        self.model["polarized_intensity"]
+                        * pt.exp(
+                            -self.model["faraday_depth_fwhm"] ** 2.0
+                            * self.data[key].spectral[:, None] ** 2.0
+                            / (4.0 * np.log(2.0))
+                        )
+                        * pt.cos(
+                            2.0
+                            * (
+                                pt.cumsum(self.model["pol_angle0"])
+                                + self.model["faraday_depth_mean"]
+                                * self.data[key].spectral[:, None]
+                            )
+                        )
                     )
-                )
-            ).sum(axis=1)
-            stokesU = (
-                self.model["polarized_intensity"]
-                * pt.exp(
-                    -self.model["faraday_depth_fwhm"] ** 2.0
-                    * self.data["U"].spectral[:, None] ** 2.0
-                    / (4.0 * np.log(2.0))
-                )
-                * pt.sin(
-                    2.0
-                    * (
-                        pt.cumsum(self.model["pol_angle0"])
-                        + self.model["faraday_depth_mean"] * self.data["U"].spectral[:, None]
+                elif "U" in key:
+                    stokes = (
+                        self.model["polarized_intensity"]
+                        * pt.exp(
+                            -self.model["faraday_depth_fwhm"] ** 2.0
+                            * self.data[key].spectral[:, None] ** 2.0
+                            / (4.0 * np.log(2.0))
+                        )
+                        * pt.sin(
+                            2.0
+                            * (
+                                pt.cumsum(self.model["pol_angle0"])
+                                + self.model["faraday_depth_mean"]
+                                * self.data[key].spectral[:, None]
+                            )
+                        )
                     )
+                else:
+                    continue
+                _ = pm.Normal(
+                    key,
+                    mu=stokes.sum(axis=1),
+                    sigma=self.data[key].noise,
+                    observed=self.data[key].brightness,
                 )
-            ).sum(axis=1)
 
-            _ = pm.Normal("Q", mu=stokesQ, sigma=self.data["Q"].noise, observed=self.data["Q"].brightness)
-            _ = pm.Normal("U", mu=stokesU, sigma=self.data["U"].noise, observed=self.data["U"].brightness)
+            # predict Rotation measure spread function (shape: spectral, clouds)
+            re_rmsf, im_rmsf = calc_rmsf(
+                self.data["faraday_depth_abs"].spectral,
+                self.lam2_lower,
+                self.lam2_upper,
+                self.num_chans,
+                self.model["faraday_depth_mean"],
+                self.model["polarized_intensity"],
+                self.model["pol_angle0"],
+            )
 
-            # Predict Faraday depth spectrum (shape: spectral)
-            faraday_depth_abs = calc_faraday_depth_abs(stokesQ, stokesU, *self.faraday_params)
-            _ = pm.Normal(
+            # Sum over clouds to caluculate faraday depth (shape: spectral)
+            faraday_depth = pt.sqrt(
+                pt.sum(re_rmsf, axis=1) ** 2.0 + pt.sum(im_rmsf, axis=1) ** 2.0
+            )
+
+            _ = pm.Rice(
                 "faraday_depth_abs",
-                mu=faraday_depth_abs - self.model["faraday_depth_offset"],
+                nu=faraday_depth,
                 sigma=self.model["faraday_depth_sigma"],
                 observed=self.data["faraday_depth_abs"].brightness,
             )
