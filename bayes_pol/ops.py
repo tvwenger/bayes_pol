@@ -17,7 +17,9 @@ from scipy.special import erfc
 
 
 class SquareFreqRMSF(Op):
-    """pytensor Op that evaluates the F0 term.
+    """pytensor Op that evaluates the complex rotation measure spread function
+    for square frequency channels.
+
     For input with shape N, the output has shape (N, 2) where
     the second dimension contains the real and imaginary parts.
     """
@@ -66,7 +68,9 @@ class SquareFreqRMSF(Op):
 
 
 class SquareFreqRMSFGrad(Op):
-    """pytensor Op that evaluates the gradient of the F0 term.
+    """pytensor Op that evaluates the gradient of the complex rotation measure
+    spread function for square frequency channels.
+
     For input with shape N, the output has shape (N, 2) where
     the second dimension contains the real and imaginary parts.
     """

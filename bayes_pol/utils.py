@@ -16,8 +16,8 @@ from bayes_pol.ops import square_freq_rmsf
 from bayes_pol.conv import convolve1d
 
 
-def calc_faraday_spectrum(faraday_depth_axis, lam2_axis, stokesQ, stokesU):
-    """Calculate the Faraday spectrum from Stokes Q and U via direct convolution.
+def construct_faraday_spectrum(faraday_depth_axis, lam2_axis, stokesQ, stokesU):
+    """Construct the Faraday spectrum from Stokes Q and U via direct convolution.
 
     Parameters
     ----------
@@ -41,7 +41,7 @@ def calc_faraday_spectrum(faraday_depth_axis, lam2_axis, stokesQ, stokesU):
     return faraday_spec
 
 
-def calc_faraday_dispersion(
+def predict_faraday_dispersion(
     faraday_depth_axis: Iterable[float],
     lam2_lower: Iterable[float],
     lam2_upper: Iterable[float],
@@ -51,7 +51,7 @@ def calc_faraday_dispersion(
     pol_angles: Iterable[float],
     faraday_depth_fwhms: Iterable[float],
 ):
-    """Calculate the faraday dispersion function (FDF, i.e. line profile) for each cloud
+    """Calculate the Faraday dispersion function (FDF, i.e. line profile) for each cloud
     analytically.
 
     Parameters
@@ -87,7 +87,7 @@ def calc_faraday_dispersion(
 
     # Faraday depth axes offset to mean faraday depth (shape F x C x W)
     faraday_depth_axis_offset = pt.repeat(
-        (faraday_depth_axis[:, None] - faraday_depths)[..., None],
+        (faraday_depth_axis[:, None] - pt.cumsum(faraday_depths))[..., None],
         len(lam2_lower),
         axis=-1,
     )
@@ -99,31 +99,28 @@ def calc_faraday_dispersion(
     rmsf_real = rmsf[..., 0]
     rmsf_imag = rmsf[..., 1]
 
-    # cumulative polarization angle (nearest to farthest; shape C)
-    cum_pol_angles = pt.cumsum(pol_angles)
-
     # rotate (shape F x C x W)
     rmsf_real_rotate = rmsf_real * pt.cos(
-        2.0 * cum_pol_angles[None, :, None]
-    ) - rmsf_imag * pt.sin(2.0 * cum_pol_angles[None, :, None])
+        2.0 * pol_angles[None, :, None]
+    ) - rmsf_imag * pt.sin(2.0 * pol_angles[None, :, None])
     rmsf_imag_rotate = rmsf_imag * pt.cos(
-        2.0 * cum_pol_angles[None, :, None]
-    ) + rmsf_real * pt.sin(2.0 * cum_pol_angles[None, :, None])
+        2.0 * pol_angles[None, :, None]
+    ) + rmsf_real * pt.sin(2.0 * pol_angles[None, :, None])
 
     # Convolution kernel (shape W x C x F)
     delta_function = np.zeros_like(faraday_depth_axis)
     delta_function[len(faraday_depth_axis) // 2] = 1.0
-    arg = np.sqrt(4.0 * np.pi * np.log(2.0)) * (
+    cum_faraday_depth_fwhm2 = pt.cumsum(faraday_depth_fwhms**2.0)
+    arg = np.sqrt(4.0 * np.pi * np.log(2.0) / cum_faraday_depth_fwhm2[:, None]) * (
         pt.exp(
             -4.0
             * np.log(2.0)
             * faraday_depth_axis**2.0
-            / faraday_depth_fwhms[:, None] ** 2.0
+            / cum_faraday_depth_fwhm2[:, None]
         )
-        / faraday_depth_fwhms[:, None]
     )
     switch = pt.switch(
-        pt.eq(faraday_depth_fwhms[:, None], 0.0),
+        pt.eq(cum_faraday_depth_fwhm2[:, None], 0.0),
         delta_function,
         arg,
     )

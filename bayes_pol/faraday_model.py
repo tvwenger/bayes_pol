@@ -16,7 +16,7 @@ import numpy as np
 
 from bayes_spec import BaseModel
 
-from bayes_pol.utils import calc_faraday_dispersion
+from bayes_pol.utils import predict_faraday_dispersion
 
 
 class FaradayModel(BaseModel):
@@ -34,7 +34,7 @@ class FaradayModel(BaseModel):
         super().__init__(*args, **kwargs)
 
         # Check data
-        if len(self.data["faraday_depth_abs"].spectral) % 2 == 0:
+        if len(self.data["faraday_depth_real"].spectral) % 2 == 0:
             raise ValueError("Faraday depth spectrum length must be odd")
 
         # Select features used for posterior clustering
@@ -63,9 +63,8 @@ class FaradayModel(BaseModel):
 
     def add_priors(
         self,
-        prior_faraday_depth_mean: Iterable[float] = [0.0, 1000.0],  # rad m-2
-        prior_faraday_depth_fwhm: float = 10.0,  # rad m-2
-        prior_faraday_depth_sigma: float = 1.0,  # data brightness units
+        prior_faraday_depth_mean: Iterable[float] = [0.0, 100.0],  # rad m-2
+        prior_faraday_depth_fwhm: float = 5.0,  # rad m-2
     ):
         """Add priors and deterministics to the model
 
@@ -113,15 +112,6 @@ class FaradayModel(BaseModel):
             )
             _ = pm.Deterministic("pol_angle0", 0.5 * pol_angle0_norm, dims="cloud")
 
-            # Faraday depth rms (data brightness)
-            faraday_depth_sigma_norm = pm.HalfNormal(
-                "faraday_depth_sigma_norm", sigma=1.0
-            )
-            _ = pm.Deterministic(
-                "faraday_depth_sigma",
-                faraday_depth_sigma_norm * prior_faraday_depth_sigma,
-            )
-
     def add_likelihood(self):
         """Add likelihood to the model. SpecData key must be "Q", "U", and "faraday_depth_abs".
         Spectral units for "Q" and "U" should be square wavelength in m2.
@@ -129,44 +119,31 @@ class FaradayModel(BaseModel):
         Order of clouds is nearest to farthest.
         """
         with self.model:
-            # Predict Stokes Q and U, sum over clouds (shape: spectral, clouds)
             for key in self.data.keys():
                 if "Q" in key:
-                    stokes = (
-                        self.model["polarized_intensity"]
-                        * pt.exp(
-                            -self.model["faraday_depth_fwhm"] ** 2.0
-                            * self.data[key].spectral[:, None] ** 2.0
-                            / (4.0 * np.log(2.0))
-                        )
-                        * pt.cos(
-                            2.0
-                            * (
-                                pt.cumsum(self.model["pol_angle0"])
-                                + self.model["faraday_depth_mean"]
-                                * self.data[key].spectral[:, None]
-                            )
-                        )
-                    )
+                    func = pt.cos
                 elif "U" in key:
-                    stokes = (
-                        self.model["polarized_intensity"]
-                        * pt.exp(
-                            -self.model["faraday_depth_fwhm"] ** 2.0
-                            * self.data[key].spectral[:, None] ** 2.0
-                            / (4.0 * np.log(2.0))
-                        )
-                        * pt.sin(
-                            2.0
-                            * (
-                                pt.cumsum(self.model["pol_angle0"])
-                                + self.model["faraday_depth_mean"]
-                                * self.data[key].spectral[:, None]
-                            )
-                        )
-                    )
+                    func = pt.sin
                 else:
                     continue
+
+                # Predict Stokes Q and U (shape: spectral, clouds)
+                stokes = (
+                    self.model["polarized_intensity"]
+                    * pt.exp(
+                        -pt.cumsum(self.model["faraday_depth_fwhm"] ** 2.0)
+                        * self.data[key].spectral[:, None] ** 2.0
+                        / (4.0 * np.log(2.0))
+                    )
+                    * func(
+                        2.0
+                        * (
+                            self.model["pol_angle0"]
+                            + pt.cumsum(self.model["faraday_depth_mean"])
+                            * self.data[key].spectral[:, None]
+                        )
+                    )
+                )
 
                 # Sum over clouds (shape: spectral)
                 _ = pm.Normal(
@@ -176,9 +153,9 @@ class FaradayModel(BaseModel):
                     observed=self.data[key].brightness,
                 )
 
-            # predict Faraday depth spectrum (shape: spectral, clouds)
-            re_rmsf, im_rmsf = calc_faraday_dispersion(
-                self.data["faraday_depth_abs"].spectral,
+            # predict FDF (shape: spectral, clouds)
+            fdf_real, fdf_imag = predict_faraday_dispersion(
+                self.data["faraday_depth_real"].spectral,
                 self.lam2_lower,
                 self.lam2_upper,
                 self.num_chans,
@@ -188,14 +165,16 @@ class FaradayModel(BaseModel):
                 self.model["faraday_depth_fwhm"],
             )
 
-            # Sum over clouds to caluculate faraday depth (shape: spectral)
-            faraday_depth = pt.sqrt(
-                pt.sum(re_rmsf, axis=1) ** 2.0 + pt.sum(im_rmsf, axis=1) ** 2.0
+            # Sum over clouds (shape: spectral)
+            _ = pm.Normal(
+                "faraday_depth_real",
+                mu=fdf_real.sum(axis=1),
+                sigma=self.data["faraday_depth_real"].noise,
+                observed=self.data["faraday_depth_real"].brightness,
             )
-
-            _ = pm.Rice(
-                "faraday_depth_abs",
-                nu=faraday_depth,
-                sigma=self.model["faraday_depth_sigma"],
-                observed=self.data["faraday_depth_abs"].brightness,
+            _ = pm.Normal(
+                "faraday_depth_imag",
+                mu=fdf_imag.sum(axis=1),
+                sigma=self.data["faraday_depth_imag"].noise,
+                observed=self.data["faraday_depth_imag"].brightness,
             )
