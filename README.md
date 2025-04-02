@@ -25,8 +25,11 @@ Bayesian Spectral Polarization Models
 
 Install with `pip` in a `conda` virtual environment:
 ```
-conda create --name bayes_pol -c conda-forge pymc>=5.20 pip
+conda create --name bayes_pol -c conda-forge pymc pip
 conda activate bayes_pol
+# Due to a bug in arviz, this fork is temporarily necessary
+# See: https://github.com/arviz-devs/arviz/issues/2437
+pip install git+https://github.com/tvwenger/arviz.git@plot_pair_reference_labels
 pip install bayes_pol
 ```
 
@@ -46,16 +49,16 @@ The models provided by `bayes_pol` are implemented in the [`bayes_spec`](https:/
 
 ## `FaradayModel`
 
-The `FaradayModel` predicts observations of Stokes Q, U, and Faraday depth (the Fourier transform of the complex polarization) by assuming the polarized intensity is modified by a series of "clouds" in Faraday depth space. The following diagram demonstrates the relationship between the free parameters (empty ellipses), deterministic quantities (rectangles), model predictions (filled ellipses), and observations (filled, round rectangles). Many of the parameters are internally normalized (and thus have names like `_norm`). The subsequent tables describe the model parameters in more detail.
+The `FaradayModel` predicts observations of Stokes Q, U, and Faraday dispersion function (the Fourier transform of the complex polarization) by assuming the polarized intensity is modified by a series of "clouds" in Faraday depth space. The following diagram demonstrates the relationship between the free parameters (empty ellipses), deterministic quantities (rectangles), model predictions (filled ellipses), and observations (filled, round rectangles). Many of the parameters are internally normalized (and thus have names like `_norm`). The subsequent tables describe the model parameters in more detail.
 
 ![faraday model graph](docs/source/notebooks/faraday_model.png)
 
-| Cloud Parameter<br>`variable` | Parameter                           | Units           | Prior, where<br>($p_0, p_1, \dots$) = `prior_{variable}`     | Default<br>`prior_{variable}` |
-| :---------------------------- | :---------------------------------- | :-------------- | :----------------------------------------------------------- | :---------------------------- |
-| `polarized_intensity`         | Polarized intensity                 | data brightness | $P_I \sim {\rm HalfNormal}(\sigma=p)$                        | `100.0`                       |
-| `faraday_depth_mean`          | Mean Faraday depth                  | `rad/m2`        | $\langle F \rangle \sim {\rm Cauchy}(\alpha=p_0, \beta=p_1)$ | `[0.0, 1000.0]`               |
-| `faraday_depth_fwhm`          | Faraday depth FWHM                  | `rad/m2`        | $\Delta F \sim {\rm HalfNormal}(\sigma=p)$                   | `10.0`                        |
-| `pol_angle0`                  | Polarization angle at $\lambda = 0$ | `rad`           | $\phi_0 \sim {\rm Uniform}(-\pi/2, \pi/2)$                   |                               |  |
+| Cloud Parameter<br>`variable` | Parameter                           | Units    | Prior, where<br>($p_0, p_1, \dots$) = `prior_{variable}` | Default<br>`prior_{variable}` |
+| :---------------------------- | :---------------------------------- | :------- | :------------------------------------------------------- | :---------------------------- |
+| `polarization_fraction`       | Linear polarization fraction        | ``       | $p \sim {\rm Beta}(\alpha=2, \beta=2)$                   | ``                            |
+| `faraday_depth_mean`          | Mean Faraday depth                  | `rad/m2` | $\phi_0 \sim {\rm Normal}(\mu=p_0, \sigma=p_1)$          | `[0.0, 100.0]`                |
+| `faraday_depth_fwhm`          | Faraday depth FWHM                  | `rad/m2` | $\Delta F \sim {\rm HalfNormal}(\sigma=p)$               | `5.0`                         |
+| `pol_angle0`                  | Polarization angle at $\lambda = 0$ | `rad`    | $\chi_0 \sim {\rm Uniform}(-\pi/2, \pi/2)$               |                               |  |
 
 # Syntax & Examples
 

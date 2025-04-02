@@ -39,7 +39,7 @@ class FaradayModel(BaseModel):
 
         # Select features used for posterior clustering
         self._cluster_features += [
-            "polarized_intensity",
+            "polarization_fraction",
             "faraday_depth_mean",
             "faraday_depth_fwhm",
         ]
@@ -47,7 +47,7 @@ class FaradayModel(BaseModel):
         # Define TeX representation of each parameter
         self.var_name_map.update(
             {
-                "polarized_intensity": r"P (\%)",
+                "polarization_fraction": r"P (\%)",
                 "faraday_depth_mean": r"$\langle F \rangle$ (rad m$^{-2}$)",
                 "faraday_depth_fwhm": r"$\Delta F$ (rad m$^{-2}$)",
                 "pol_angle0": r"$\phi_0$ (rad)",
@@ -72,14 +72,14 @@ class FaradayModel(BaseModel):
         ----------
         prior_faraday_depth_mean : Iterable[float], optional
             Prior distribution on the mean Faraday depth (rad/m2), by default [0.0, 1000.0], where
-            faraday_depth_mean ~ Cauchy(alpha=prior[0], beta=prior[1])
+            faraday_depth_mean ~ Normal(mu=prior[0], sigma=prior[1])
         prior_faraday_depth_fwhm : float, optional
             Prior distribution on the Faraday depth full-width at half-maximum (rad/m2), by default 10.0, where
             faraday_depth_fwhm ~ HalfNormal(sigma=prior)
         """
         with self.model:
             # Polarized intensity (data brightness units)
-            _ = pm.Beta("polarized_intensity", alpha=2.0, beta=2.0, dims="cloud")
+            _ = pm.Beta("polarization_fraction", alpha=2.0, beta=2.0, dims="cloud")
 
             # Mean Faraday depth (rad m-2)
             faraday_depth_mean_norm = pm.Normal(
@@ -129,7 +129,7 @@ class FaradayModel(BaseModel):
 
                 # Predict Stokes Q and U (shape: spectral, clouds)
                 stokes = (
-                    self.model["polarized_intensity"]
+                    self.model["polarization_fraction"]
                     * pt.exp(
                         -pt.cumsum(self.model["faraday_depth_fwhm"] ** 2.0)
                         * self.data[key].spectral[:, None] ** 2.0
@@ -160,7 +160,7 @@ class FaradayModel(BaseModel):
                 self.lam2_upper,
                 self.num_chans,
                 self.model["faraday_depth_mean"],
-                self.model["polarized_intensity"],
+                self.model["polarization_fraction"],
                 self.model["pol_angle0"],
                 self.model["faraday_depth_fwhm"],
             )
