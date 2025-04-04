@@ -24,6 +24,7 @@ Installation
    :caption: Tutorials:
 
    notebooks/faraday_model
+   notebooks/faraday_qu_model
 
 .. toctree::
    :maxdepth: 2

@@ -13,6 +13,7 @@ Bayesian Spectral Polarization Models
   - [Basic Installation](#basic-installation)
   - [Development installation](#development-installation)
 - [Models](#models)
+  - [`FaradayQUModel`](#faradayqumodel)
   - [`FaradayModel`](#faradaymodel)
 - [Syntax \& Examples](#syntax--examples)
 - [Issues and Contributing](#issues-and-contributing)
@@ -47,11 +48,11 @@ pip install -e .
 
 The models provided by `bayes_pol` are implemented in the [`bayes_spec`](https://github.com/tvwenger/bayes_spec) framework. `bayes_spec` assumes that the source of the polarization signal can be decomposed into a series of "clouds" with Gaussian-like Faraday depth distributions, each of which is defined by a set of model parameters. Here we describe the models available in `bayes_pol`.
 
-## `FaradayModel`
+## `FaradayQUModel`
 
-The `FaradayModel` predicts observations of Stokes Q, U, and Faraday dispersion function (the Fourier transform of the complex polarization) by assuming the polarized intensity is modified by a series of "clouds" in Faraday depth space. The following diagram demonstrates the relationship between the free parameters (empty ellipses), deterministic quantities (rectangles), model predictions (filled ellipses), and observations (filled, round rectangles). Many of the parameters are internally normalized (and thus have names like `_norm`). The subsequent tables describe the model parameters in more detail.
+The `FaradayQUModel` predicts observations of Stokes Q, U, and Faraday dispersion function (the Fourier transform of the complex polarization) by assuming the polarized intensity is modified by a series of "clouds" in Faraday depth space. The following diagram demonstrates the relationship between the free parameters (empty ellipses), deterministic quantities (rectangles), model predictions (filled ellipses), and observations (filled, round rectangles). Many of the parameters are internally normalized (and thus have names like `_norm`). The subsequent tables describe the model parameters in more detail.
 
-![faraday model graph](docs/source/notebooks/faraday_model.png)
+![faraday qu model graph](docs/source/notebooks/faraday_qu_model.png)
 
 | Cloud Parameter<br>`variable` | Parameter                           | Units    | Prior, where<br>($p_0, p_1, \dots$) = `prior_{variable}` | Default<br>`prior_{variable}` |
 | :---------------------------- | :---------------------------------- | :------- | :------------------------------------------------------- | :---------------------------- |
@@ -59,6 +60,10 @@ The `FaradayModel` predicts observations of Stokes Q, U, and Faraday dispersion 
 | `faraday_depth_mean`          | Mean Faraday depth                  | `rad/m2` | $\phi_0 \sim {\rm Normal}(\mu=p_0, \sigma=p_1)$          | `[0.0, 100.0]`                |
 | `faraday_depth_fwhm`          | Faraday depth FWHM                  | `rad/m2` | $\Delta F \sim {\rm HalfNormal}(\sigma=p)$               | `5.0`                         |
 | `pol_angle0`                  | Polarization angle at $\lambda = 0$ | `rad`    | $\chi_0 \sim {\rm Uniform}(-\pi/2, \pi/2)$               |                               |  |
+
+## `FaradayModel`
+
+The `FaradayModel` is identical to the `FaradayQUModel`, but it only predicts the real, imaginary, and absolute value of the Faraday dispersion function.
 
 # Syntax & Examples
 

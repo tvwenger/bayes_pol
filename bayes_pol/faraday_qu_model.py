@@ -1,6 +1,6 @@
 """
-faraday_model.py
-FaradayModel definition
+faraday_qu_model.py
+FaradayQUModel definition
 
 Copyright(C) 2025 by
 Trey V. Wenger; tvwenger@gmail.com
@@ -10,7 +10,7 @@ This code is licensed under MIT license (see LICENSE for details)
 from typing import Iterable
 
 import pymc as pm
-from pymc.distributions.transforms import CircularTransform
+from pymc.distributions.transforms import CircularTransform, Ordered
 import pytensor.tensor as pt
 import numpy as np
 
@@ -19,7 +19,7 @@ from bayes_spec import BaseModel
 from bayes_pol.utils import predict_faraday_dispersion
 
 
-class FaradayModel(BaseModel):
+class FaradayQUModel(BaseModel):
     """Definition of the model"""
 
     def __init__(
@@ -75,6 +75,9 @@ class FaradayModel(BaseModel):
         prior_faraday_depth_fwhm : float, optional
             Prior distribution on the Faraday depth full-width at half-maximum (rad/m2), by default 10.0, where
             faraday_depth_fwhm ~ HalfNormal(sigma=prior)
+        prior_faraday_depth_abs_sigma : float, optional
+            Prior distribution on the Faraday depth magnitude uncertainty, by default 1.0, where
+            faraday_depth_abs_sigma ~ HalfNormal(sigma=prior)
         """
         with self.model:
             # Polarized intensity (data brightness units)
@@ -82,7 +85,12 @@ class FaradayModel(BaseModel):
 
             # Mean Faraday depth (rad m-2)
             faraday_depth_mean_norm = pm.Normal(
-                "faraday_depth_mean_norm", mu=0.0, sigma=1.0, dims="cloud"
+                "faraday_depth_mean_norm",
+                mu=0.0,
+                sigma=1.0,
+                initval=np.linspace(-3.0, 3.0, self.n_clouds),
+                transform=Ordered(),
+                dims="cloud",
             )
             _ = pm.Deterministic(
                 "faraday_depth_mean",
@@ -90,14 +98,6 @@ class FaradayModel(BaseModel):
                 + prior_faraday_depth_mean[1] * faraday_depth_mean_norm,
                 dims="cloud",
             )
-            """
-            _ = pm.Interpolated(
-                "faraday_depth_mean",
-                self.data["faraday_depth_abs"].spectral,
-                self.data["faraday_depth_abs"].brightness ** 2.0,
-                dims="cloud",
-            )
-            """
 
             # FWHM Faraday depth (rad m-2)
             faraday_depth_fwhm_norm = pm.HalfNormal(
@@ -123,8 +123,46 @@ class FaradayModel(BaseModel):
             _ = pm.Dirichlet("mixture_weight", a=np.ones(2), shape=(2,))
 
     def add_likelihood(self):
-        """Add likelihood to the model. SpecData key must be "faraday_depth_abs" with spectral units in rad/m2."""
+        """Add likelihood to the model. SpecData key must be "Q", "U", and "faraday_depth_abs".
+        Spectral units for "Q" and "U" should be square wavelength in m2.
+        Spectral units for "faraday_depth_abs" should be rad/m2.
+        Order of clouds is nearest to farthest.
+        """
         with self.model:
+            for key in self.data.keys():
+                if "Q" in key:
+                    func = pt.cos
+                elif "U" in key:
+                    func = pt.sin
+                else:
+                    continue
+
+                # Predict Stokes Q and U (shape: spectral, clouds)
+                stokes = (
+                    self.model["polarization_fraction"]
+                    * pt.exp(
+                        -self.model["faraday_depth_fwhm"] ** 2.0
+                        * self.data[key].spectral[:, None] ** 2.0
+                        / (4.0 * np.log(2.0))
+                    )
+                    * func(
+                        2.0
+                        * (
+                            self.model["pol_angle0"]
+                            + self.model["faraday_depth_mean"]
+                            * self.data[key].spectral[:, None]
+                        )
+                    )
+                )
+
+                # Sum over clouds (shape: spectral)
+                _ = pm.Normal(
+                    key,
+                    mu=stokes.sum(axis=1),
+                    sigma=self.data[key].noise,
+                    observed=self.data[key].brightness,
+                )
+
             # predict FDF (shape: spectral, clouds)
             fdf_real, fdf_imag = predict_faraday_dispersion(
                 self.data["faraday_depth_abs"].spectral,
@@ -138,22 +176,7 @@ class FaradayModel(BaseModel):
             )
 
             # Sum over clouds (shape: spectral)
-            fdf_real = fdf_real.sum(axis=-1)
-            fdf_imag = fdf_imag.sum(axis=-1)
-            fdf_abs = pt.sqrt(fdf_real**2.0 + fdf_imag**2.0)
-
-            _ = pm.Normal(
-                "faraday_depth_real",
-                mu=fdf_real,
-                sigma=self.data["faraday_depth_real"].noise,
-                observed=self.data["faraday_depth_real"].brightness,
-            )
-            _ = pm.Normal(
-                "faraday_depth_imag",
-                mu=fdf_imag,
-                sigma=self.data["faraday_depth_imag"].noise,
-                observed=self.data["faraday_depth_imag"].brightness,
-            )
+            fdf_abs = pt.sqrt(fdf_real.sum(axis=1) ** 2.0 + fdf_imag.sum(axis=1) ** 2.0)
 
             # Mix likelihood
             components = [
